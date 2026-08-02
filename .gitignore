@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Project-generated outputs (run outputs, not source)
+logs/
+results/
+
+# Hugging Face / model caches (if ever redirected into the repo)
+.cache/
+*.safetensors
+*.bin
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
