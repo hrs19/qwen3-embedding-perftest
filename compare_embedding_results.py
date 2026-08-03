@@ -14,6 +14,7 @@ EXCEL_PATH = RESULTS_DIR / "comparison.xlsx"
 
 COLUMNS = [
     ("model_size", "Model"),
+    ("backend", "Backend"),
     ("device", "Device"),
     ("requested_dimension", "ReqDim"),
     ("output_dimension", "OutDim"),
@@ -45,9 +46,11 @@ def main():
     rows = []
     for path in result_files:
         with open(path, "r", encoding="utf-8") as f:
-            rows.append(json.load(f))
+            row = json.load(f)
+        row.setdefault("backend", "torch")  # older results predate --backend; they were all torch
+        rows.append(row)
 
-    rows.sort(key=lambda r: (r.get("model_size", ""), r.get("device", ""), str(r.get("requested_dimension", ""))))
+    rows.sort(key=lambda r: (r.get("model_size", ""), r.get("backend", ""), r.get("device", ""), str(r.get("requested_dimension", ""))))
 
     header = [label for _, label in COLUMNS]
     widths = [max(len(label), 8) for _, label in COLUMNS]
@@ -68,7 +71,7 @@ def main():
     df = pd.DataFrame(rows)
     dim_order = ["768", "1024", "default"]
     df["requested_dimension"] = pd.Categorical(df["requested_dimension"].astype(str), categories=dim_order, ordered=True)
-    df = df.sort_values(["model_size", "device", "requested_dimension"])
+    df = df.sort_values(["model_size", "backend", "device", "requested_dimension"])
 
     with pd.ExcelWriter(EXCEL_PATH, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="raw_results", index=False)
@@ -76,13 +79,13 @@ def main():
         ok = df[df["status"] == "success"]
         if not ok.empty:
             throughput_pivot = ok.pivot_table(
-                index=["model_size", "device"], columns="requested_dimension",
+                index=["model_size", "backend", "device"], columns="requested_dimension",
                 values="throughput_samples_per_sec", observed=True,
             )
             throughput_pivot.to_excel(writer, sheet_name="throughput_samples_per_sec", merge_cells=False)
 
             mem_pivot = ok.pivot_table(
-                index=["model_size", "device"], columns="requested_dimension",
+                index=["model_size", "backend", "device"], columns="requested_dimension",
                 values="peak_mem_gb", observed=True,
             )
             mem_pivot.to_excel(writer, sheet_name="peak_mem_gb", merge_cells=False)

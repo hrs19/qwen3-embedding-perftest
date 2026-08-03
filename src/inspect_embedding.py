@@ -4,12 +4,11 @@ looks like (shape, dtype, sample values, norm) -- not a benchmark, just a look-a
 Example:
     python src/inspect_embedding.py --model-size 0.6b --device cpu --dimension default
     python src/inspect_embedding.py --model-size 0.6b --device cuda --dimension 768 --text "hello world"
+    python src/inspect_embedding.py --model-size 0.6b --backend mlx --dimension default   # Apple Silicon
 """
 import argparse
 import json
 from pathlib import Path
-
-from embedding_model import QwenEmbeddingModel
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "results" / "sample_vectors"
 
@@ -19,19 +18,32 @@ DEFAULT_TEXT = "what expression would i use to say i love you if i were an itali
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--model-size", choices=["0.6b", "4b", "8b"], default="0.6b")
-    p.add_argument("--device", choices=["cpu", "cuda"], default="cuda")
+    p.add_argument("--backend", choices=["torch", "mlx"], default="torch")
+    p.add_argument(
+        "--device", choices=["cpu", "cuda"], default=None,
+        help="Required for --backend torch (default cuda if omitted). Ignored for --backend mlx.",
+    )
     p.add_argument("--dimension", default="default", help="Integer (e.g. 768) or 'default' for native size")
     p.add_argument("--text", default=DEFAULT_TEXT)
     p.add_argument("--preview-n", type=int, default=10, help="How many vector values to print")
-    return p.parse_args()
+    args = p.parse_args()
+    if args.backend == "torch" and args.device is None:
+        args.device = "cuda"
+    return args
 
 
 def main():
     args = parse_args()
     dimension = None if args.dimension == "default" else int(args.dimension)
+    device_label = "mlx" if args.backend == "mlx" else args.device
 
-    print(f"Loading Qwen3-Embedding-{args.model_size} on {args.device}...")
-    embed_model = QwenEmbeddingModel(args.model_size, args.device, mode="frozen")
+    print(f"Loading Qwen3-Embedding-{args.model_size} via backend={args.backend} device={device_label}...")
+    if args.backend == "mlx":
+        from embedding_model_mlx import MLXEmbeddingModel
+        embed_model = MLXEmbeddingModel(args.model_size, mode="frozen")
+    else:
+        from embedding_model import QwenEmbeddingModel
+        embed_model = QwenEmbeddingModel(args.model_size, args.device, mode="frozen")
 
     embeddings = embed_model.encode([args.text], batch_size=1, dimension=dimension, normalize=True)
     vector = embeddings[0]
@@ -51,12 +63,13 @@ def main():
     print(vector[-args.preview_n:].tolist())
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / f"{args.model_size}_dim{vector.shape[0]}_{args.device}.json"
+    out_path = OUTPUT_DIR / f"{args.model_size}_dim{vector.shape[0]}_{device_label}.json"
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump({
             "text": args.text,
             "model_size": args.model_size,
-            "device": args.device,
+            "backend": args.backend,
+            "device": device_label,
             "native_hidden_size": embed_model.hidden_size,
             "output_dimension": int(vector.shape[0]),
             "vector": vector.tolist(),

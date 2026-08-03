@@ -56,6 +56,20 @@ python src/inspect_embedding.py --model-size 0.6b --device cuda --text "your sen
 ```
 Prints shape/norm/sample values and saves the full vector to `results/sample_vectors/`.
 
+## MLX backend (Apple Silicon)
+
+`generate_embeddings.py` and `inspect_embedding.py` also support `--backend mlx` for running on Apple Silicon Macs (M1/M2/M3/M4) via [`mlx-embeddings`](https://github.com/Blaizzy/mlx-embeddings), using community-converted weights from [`mlx-community`](https://huggingface.co/mlx-community). `--device` is ignored in this mode — MLX uses unified memory, there's no separate CPU/GPU split to pick.
+
+```
+pip install mlx mlx-embeddings   # macOS + Apple Silicon only
+python src/generate_embeddings.py --model-size 0.6b --backend mlx --dimension default
+```
+
+**Scope and caveats:**
+- **Embedding generation only.** There is no MLX path for `run_experiment.py` (classification / LoRA fine-tuning) — that would need a separate implementation on top of `mlx_lm.lora`, which isn't built here.
+- **Untested.** This was written without access to Apple Silicon hardware, so it hasn't actually been run. The `mlx-community` model repo IDs in `src/embedding_model_mlx.py` (`*-mxfp8` variants) were found via search, not verified to load — if one fails, check [huggingface.co/mlx-community](https://huggingface.co/mlx-community) for an available variant of that model size (e.g. `*-8bit`) and edit `MODEL_IDS`.
+- mlx-embeddings' `generate()` always returns L2-normalized output; there's no documented way to get raw unnormalized embeddings through it (unlike the torch backend, which can return either).
+
 ## Output layout
 
 - `logs/` — per-run log files (console + debug detail), gitignored.

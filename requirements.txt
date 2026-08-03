@@ -9,3 +9,10 @@ scikit-learn>=1.3.0
 psutil>=5.9.0
 numpy>=1.24.0
 tqdm>=4.65.0
+openpyxl>=3.1.0
+pandas>=2.0.0
+
+# --backend mlx (Apple Silicon macOS only -- these will not install/run elsewhere).
+# Embedding generation only; not used by run_experiment.py (classification/LoRA).
+mlx>=0.18.0; sys_platform == "darwin"
+mlx-embeddings>=0.0.3; sys_platform == "darwin"
