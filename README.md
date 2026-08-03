@@ -27,6 +27,24 @@ Uses `transformers>=4.51` (required for Qwen3 architecture support), `peft` + `b
 
 4-bit quantization is GPU-only (no CPU kernel path in bitsandbytes), which is why 4B/8B need much more RAM on CPU than VRAM on GPU — 8B on CPU (~20GB required) will not fit on a 16GB-RAM machine at all.
 
+## Benchmark summary (CPU vs GPU)
+
+Measured on the reference hardware above (RTX 4060 Laptop, 8GB VRAM / 16GB RAM), pure embedding generation, 500 samples from `clinc/clinc_oos`, native output dimension, `torch` backend. See [`src/generate_embeddings.py`](src/generate_embeddings.py) usage above to reproduce; full run matrix and raw numbers in `results/embeddings/comparison.xlsx` after running [`run_embedding_comparison.ps1`](run_embedding_comparison.ps1).
+
+| Model | Params | Device | Samples/sec | Time (500 samples) | Peak memory | GPU speedup |
+|---|---|---|---|---|---|---|
+| 0.6B | ~0.6B | CPU | 18.9 | 26.5s | 0.21GB | — |
+| 0.6B | ~0.6B | GPU | 378.9 | 1.3s | 1.26GB | ~20x |
+| 4B | ~4B | CPU | *failed — insufficient RAM* | — | — | — |
+| 4B | ~4B | GPU | 73.0 | 6.8s | 2.78GB | n/a (no CPU baseline) |
+| 8B | ~8B | CPU | *failed — insufficient RAM* | — | — | — |
+| 8B | ~8B | GPU | 38.0 | 13.2s | 4.88GB | n/a (no CPU baseline) |
+
+Takeaways from this hardware:
+- GPU throughput drops roughly in line with model size (0.6B → 4B → 8B is ~6.7x → ~2x per step down in speed), consistent with more parameters per forward pass, plus 4B/8B running 4-bit quantized (extra dequant overhead) vs 0.6B's plain fp16.
+- CPU only completed the 0.6B model — 4B and 8B need bf16 weights on CPU (no 4-bit CPU kernel), which exceeds available system RAM on a 16GB machine. This is a hardware ceiling, not a code limitation — see the "Model size vs precision" table above.
+- These are single-machine, single-run numbers (no repeated trials/averaging) — treat them as directional, not authoritative benchmarks.
+
 ## Scripts
 
 ### Classification benchmark
@@ -58,7 +76,9 @@ Prints shape/norm/sample values and saves the full vector to `results/sample_vec
 
 ## MLX backend (Apple Silicon)
 
-`generate_embeddings.py` and `inspect_embedding.py` also support `--backend mlx` for running on Apple Silicon Macs (M1/M2/M3/M4) via [`mlx-embeddings`](https://github.com/Blaizzy/mlx-embeddings), using community-converted weights from [`mlx-community`](https://huggingface.co/mlx-community). `--device` is ignored in this mode — MLX uses unified memory, there's no separate CPU/GPU split to pick.
+> ⚠️ **This backend was written entirely by Claude (AI-generated) and has never been run.** The project was developed on a Windows/CUDA machine with no Apple Silicon hardware available to test against. Treat `src/embedding_model_mlx.py` as an unverified first draft — expect to debug it on first use, not just run it.
+
+`generate_embeddings.py` and `inspect_embedding.py` support `--backend mlx` for running on Apple Silicon Macs (M1/M2/M3/M4) via [`mlx-embeddings`](https://github.com/Blaizzy/mlx-embeddings), using community-converted weights from [`mlx-community`](https://huggingface.co/mlx-community). `--device` is ignored in this mode — MLX uses unified memory, there's no separate CPU/GPU split to pick.
 
 ```
 pip install mlx mlx-embeddings   # macOS + Apple Silicon only
@@ -67,8 +87,9 @@ python src/generate_embeddings.py --model-size 0.6b --backend mlx --dimension de
 
 **Scope and caveats:**
 - **Embedding generation only.** There is no MLX path for `run_experiment.py` (classification / LoRA fine-tuning) — that would need a separate implementation on top of `mlx_lm.lora`, which isn't built here.
-- **Untested.** This was written without access to Apple Silicon hardware, so it hasn't actually been run. The `mlx-community` model repo IDs in `src/embedding_model_mlx.py` (`*-mxfp8` variants) were found via search, not verified to load — if one fails, check [huggingface.co/mlx-community](https://huggingface.co/mlx-community) for an available variant of that model size (e.g. `*-8bit`) and edit `MODEL_IDS`.
+- **Unverified model repo IDs.** The `mlx-community` repo IDs in `src/embedding_model_mlx.py` (`*-mxfp8` variants) were found via web search, not confirmed to actually load — if one fails, check [huggingface.co/mlx-community](https://huggingface.co/mlx-community) for an available variant of that model size (e.g. `*-8bit`) and edit `MODEL_IDS`.
 - mlx-embeddings' `generate()` always returns L2-normalized output; there's no documented way to get raw unnormalized embeddings through it (unlike the torch backend, which can return either).
+- If you get this working (or fix it), consider it a good candidate for a PR back to this repo.
 
 ## Output layout
 
